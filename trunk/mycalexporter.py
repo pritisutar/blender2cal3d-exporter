@@ -684,23 +684,21 @@ class Cal3DBone(object):
 		# head tail of the bone relative to parent
 		#head = arm_matrix*mathutils.Vector(blend_bone.head_local)
 		#tail = arm_matrix*mathutils.Vector(blend_bone.tail_local)
-		head = mathutils.Vector(blend_bone.head)
-		tail = mathutils.Vector(blend_bone.tail)
+		
 		#print parent.quat
 		# Turns the Blender's head-tail-roll notation into a quaternion
 		#quat = matrix2quaternion(blender_bone2matrix(head, tail, blend_bone.roll['BONESPACE']))
-		 
-		mymat=blend_bone.matrix_local.copy();
-		
-
-		quat = mymat.to_quaternion()
+		bonespace=blend_bone.matrix_local
+		if cal3d_parent:bonespace=blend_bone.matrix_local*blend_bone.parent.matrix_local.inverted();
+		#mymatislocal
+		head = mathutils.Vector(bonespace*blend_bone.head)
+		tail = mathutils.Vector(bonespace*blend_bone.tail)
+		quat =bonespace.to_quaternion() 
 		#quat =  matrix2quaternion(mymat)
 		
 		# Pose location
 		 #ploc = POSEBONES[blend_bone.name].loc
-		mymat=POSEBONES[blend_bone.name].matrix_local
-		ploc=mathutils.Vector((mymat[3][0],mymat[3][1],mymat[3][2]))       
-      
+		
 
 		if cal3d_parent:
             # Compute the translation from the parent bone's head to the child
@@ -708,28 +706,34 @@ class Cal3DBone(object):
             # The translation is parent_tail - parent_head + child_head,
             # but parent_tail and parent_head must be converted from the parent's parent
             # system coordinate into the parent system coordinate.
-	   
+			mymat=cal3d_parent.quat.to_matrix();
+			mymat.invert()
+			parent_head=mymat*cal3d_parent.head
 			
-			tempmat=cal3d_parent.quat.to_matrix();
-			print(tempmat)
-			tempmat.invert();
-			print(tempmat)
-			parent_invert_transform=tempmat #cal3d_parent.quat.to_matrix().invert();
-			parent_head=cal3d_parent.head*parent_invert_transform
-			parent_tail=cal3d_parent.tail*parent_invert_transform
+			parent_tail=mymat*cal3d_parent.tail
+			
+			mymat=blend_bone.matrix_local*blend_bone.parent.matrix_local.inverted();
+			loc=mathutils.Vector((mymat[3][0],mymat[3][1],mymat[3][2]))
+			loc=parent_tail+head-parent_head
+			#quat=mymat.to_quaternion();
+			
+			
+			#mymat2=mymat*quat.to_matrix().to_4x4();
+			#quat is global rotation
+			#quat = mymat2.to_quaternion();
             #parent_head = vector_by_matrix_3x3(cal3d_parent.head, parent_invert_transform)
             #parent_tail = vector_by_matrix_3x3(cal3d_parent.tail, parent_invert_transform)
-			ploc = ploc+ mathutils.Vector(blend_bone.head)
+			#ploc = ploc+ mathutils.Vector(blend_bone.head)
            
             # EDIT!!! FIX BONE OFFSET BE CAREFULL OF THIS PART!!! ??
             #diff = vector_by_matrix_3x3(head, parent_invert_transform)
-			parent_tail=parent_tail+ head # vector_add(parent_tail, head)
+			#parent_tail=parent_tail+ head # vector_add(parent_tail, head)
             # DONE!!!
            
-			parentheadtotail = parent_tail-parent_head #vector_sub(parent_tail, parent_head)
+			#parentheadtotail = parent_tail-parent_head #vector_sub(parent_tail, parent_head)
             # hmm this should be handled by the IPos, but isn't for non-animated
             # bones which are transformed in the pose mode...
-			loc = parentheadtotail
+			
            
 		else:
             # Apply the armature's matrix to the root bones
@@ -739,8 +743,9 @@ class Cal3DBone(object):
            
 			loc = head
 		
-
-			mymat2=arm_matrix*quat.to_matrix().to_4x4();
+			mymat2=quat.to_matrix().to_4x4()
+			mymat2=arm_matrix*mymat2;
+			#quat is global rotation
 			quat = mymat2.to_quaternion();
 		#quat = matrix2quaternion(matrix_multiply(arm_matrix, quaternion2matrix(quat))) # Probably not optimal
 			
@@ -762,12 +767,12 @@ class Cal3DBone(object):
 		
 		if cal3d_parent:
 			self.matrix = cal3d_parent.matrix*self.matrix
-		
+		#self.matrix = mathutils.Matrix(arm_matrix) * mathutils.Matrix(blend_bone.matrix_local) 
 		# lloc and lquat are the bone => model space transformation (translation and rotation).
 		# They are probably specific to Cal3D.
 		#mymat2 = matrix_invert(self.matrix.copy()
-		mymat2=self.matrix.copy()
-		mymat2.invert();
+		mymat2=self.matrix.inverted()
+		
 		self.lloc =mathutils.Vector((mymat2[3][0], mymat2[3][1], mymat2[3][2]))
 		
 		self.lquat = mymat2.to_quaternion();
@@ -1050,8 +1055,8 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 			#return
 
 	# we need pose bone locations
-	if blender_armature: 
-		for pbone in blender_armature.data.bones.values():
+		
+	for pbone in blender_armature.data.bones.values():
 			POSEBONES[pbone.name] = pbone
 	for masterbone in blender_armature.data.bones:
 		if not masterbone.parent:
@@ -1124,7 +1129,7 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 
 				while currenttime <= rangeend: 
 					bpy.context.scene.frame_set(currenttime)
-					time = (currenttime - rangestart) / 24.0 #(assuming default 24fps for md5 anim)
+					time = (currenttime - rangestart) / 24.0 #(assuming default 24fps for  anim)
 					if time > animation.duration:
 						animation.duration = time
 					pose = blender_armature.pose
@@ -1158,10 +1163,10 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 						rot = [rot.w,rot.x,rot.y,rot.z]
 #animation.addkeyforbone(bone.id, time, loc, rot)
 						rot = tuple(rot)
-						print("keyfram at %f\n" %time)
+						#print("keyfram at %f\n" %time)
 						keyfram=Cal3DKeyFrame(time, loc, rot) 
 						animation.tracks[bonename].keyframes.append( keyfram )
-						print("%d\n"%len(animation.tracks[bonename].keyframes))
+						#print("%d\n"%len(animation.tracks[bonename].keyframes))
 					currenttime += 1
 
 
