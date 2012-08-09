@@ -603,9 +603,25 @@ class Cal3DVertex(object):
 			collapse_id = -1
 		buff=('\t\t<VERTEX ID="%i" NUMINFLUENCES="%i">\n' % \
 				(self.id, len(self.influences)))
-		buff+=('\t\t\t<POS>%.6f %.6f %.6f</POS>\n' % tuple(self.loc*matrix))
+		daloc=matrix*self.loc
+		# Calculate global coords
+		daloc[0] = matrix[0][0] * self.loc[0] + \
+                matrix[0][1] *self.loc[1] + \
+                matrix[0][2] * self.loc[2] + \
+                matrix[0][3]
+
+		daloc[1] = matrix[1][0] * self.loc[0] + \
+                matrix[1][1] * self.loc[1] + \
+                matrix[1][2] * self.loc[2] + \
+                matrix[1][3]
+
+		daloc[2] = matrix[2][0] * self.loc[0] + \
+                matrix[2][1] * self.loc[1] + \
+                matrix[2][2] *self.loc[2] + \
+                matrix[2][3]
+		buff+=('\t\t\t<POS>%.6f %.6f %.6f</POS>\n' % tuple(matrix*mathutils.Vector(self.loc)))
 		
-		danormal=self.normal*matrix_normal;
+		danormal=matrix_normal*self.normal;
 		danormal.normalize()
 		#print(danormal)
 		buff+=('\t\t\t<NORM>%.6f %.6f %.6f</NORM>\n' % tuple(danormal ))
@@ -678,7 +694,7 @@ class Cal3DSkeleton(object):
 BONES = {}
 POSEBONES= {}
 class Cal3DBone(object):
-	__slots__ = 'head', 'tail', 'name', 'cal3d_parent', 'loc', 'quat', 'children', 'matrix', 'lloc', 'lquat', 'id'
+	__slots__ = 'translation_absolute','rotation_absolute','head', 'tail', 'name', 'cal3d_parent', 'loc','child_loc', 'quat', 'children', 'matrix', 'lloc', 'lquat', 'id'
 	def __init__(self, skeleton, blend_bone, arm_matrix, cal3d_parent=None):
 		
 		# head tail of the bone relative to parent
@@ -688,33 +704,35 @@ class Cal3DBone(object):
 		#print parent.quat
 		# Turns the Blender's head-tail-roll notation into a quaternion
 		#quat = matrix2quaternion(blender_bone2matrix(head, tail, blend_bone.roll['BONESPACE']))
-		bonespace=blend_bone.matrix_local
-		if cal3d_parent:bonespace=blend_bone.matrix_local*blend_bone.parent.matrix_local.inverted();
+		bonespace=blend_bone.matrix.copy()
 		#mymatislocal
-		head = mathutils.Vector(bonespace*blend_bone.head)
-		tail = mathutils.Vector(bonespace*blend_bone.tail)
-		quat =bonespace.to_quaternion() 
+		head = blend_bone.head.copy()
+		tail = blend_bone.tail.copy()
+		#if cal3d_parent:bonespace=cal3d_parent.quat.to_matrix()*blend_bone.matrix;
+		quat =bonespace.to_quaternion()
+				
+		self.child_loc=tail-head
 		#quat =  matrix2quaternion(mymat)
-		
+		#if quat.w<0: quat.x=quat.x*-1.0;quat.y=quat.y*-1.0;quat.z=quat.z*-1.0 ;quat.w=quat.w*-1.0
 		# Pose location
 		 #ploc = POSEBONES[blend_bone.name].loc
 		
-
 		if cal3d_parent:
             # Compute the translation from the parent bone's head to the child
             # bone's head, in the parent bone coordinate system.
             # The translation is parent_tail - parent_head + child_head,
             # but parent_tail and parent_head must be converted from the parent's parent
             # system coordinate into the parent system coordinate.
-			mymat=cal3d_parent.quat.to_matrix();
-			mymat.invert()
+			mymat= cal3d_parent.quat.to_matrix() #blend_bone.parent.matrix.copy();
+			mymat.invert();
 			parent_head=mymat*cal3d_parent.head
 			
 			parent_tail=mymat*cal3d_parent.tail
 			
-			mymat=blend_bone.matrix_local*blend_bone.parent.matrix_local.inverted();
-			loc=mathutils.Vector((mymat[3][0],mymat[3][1],mymat[3][2]))
-			loc=parent_tail+head-parent_head
+			#mymat=blend_bone.matrix_local*blend_bone.parent.matrix_local.inverted();
+			#loc=mathutils.Vector((mymat[3][0],mymat[3][1],mymat[3][2]))
+		
+		
 			#quat=mymat.to_quaternion();
 			
 			
@@ -727,14 +745,16 @@ class Cal3DBone(object):
            
             # EDIT!!! FIX BONE OFFSET BE CAREFULL OF THIS PART!!! ??
             #diff = vector_by_matrix_3x3(head, parent_invert_transform)
-			#parent_tail=parent_tail+ head # vector_add(parent_tail, head)
+			parent_tail=parent_tail+ head # vector_add(parent_tail, head)
             # DONE!!!
            
-			#parentheadtotail = parent_tail-parent_head #vector_sub(parent_tail, parent_head)
+			parentheadtotail = parent_tail-parent_head #vector_sub(parent_tail, parent_head)
             # hmm this should be handled by the IPos, but isn't for non-animated
             # bones which are transformed in the pose mode...
-			
-           
+			loc=parentheadtotail; #mathutils.Vector(blend_bone.tail-blend_bone.head)
+			#loc.rotate(cal3d_parent.quat.inverted())
+			#loc = cal3d_parent.child_loc.copy()
+			#loc.rotate(cal3d_parent.quat.inverted())
 		else:
             # Apply the armature's matrix to the root bones
 			head = arm_matrix*head #point_by_matrix(head, arm_matrix)
@@ -743,11 +763,11 @@ class Cal3DBone(object):
            
 			loc = head
 		
-			mymat2=quat.to_matrix().to_4x4()
+			mymat2=bonespace.to_4x4().copy()
 			mymat2=arm_matrix*mymat2;
 			#quat is global rotation
 			quat = mymat2.to_quaternion();
-		#quat = matrix2quaternion(matrix_multiply(arm_matrix, quaternion2matrix(quat))) # Probably not optimal
+			#quat = matrix2quaternion(matrix_multiply(arm_matrix, quaternion2matrix(quat))) # Probably not optimal
 			
 		self.head = head
 		self.tail = tail
@@ -757,7 +777,7 @@ class Cal3DBone(object):
 		self.loc = loc
 		self.quat = quat
 		self.children = []
-		self.matrix=quat.to_matrix().to_4x4();
+		self.matrix=quat.to_matrix().to_4x4().copy();
 		#self.matrix = matrix_translate(quaternion2matrix(quat), loc)
 		self.matrix[3][0] += loc[0]
 		self.matrix[3][1] += loc[1]
@@ -776,7 +796,15 @@ class Cal3DBone(object):
 		self.lloc =mathutils.Vector((mymat2[3][0], mymat2[3][1], mymat2[3][2]))
 		
 		self.lquat = mymat2.to_quaternion();
-		#self.lquat = matrix2quaternion(mymat2)
+		
+		# Cal3d does the vertex deform calculation by:
+		#   translationBoneSpace = coreBoneTranslationBoneSpace * boneAbsRotInAnimPose + boneAbsPosInAnimPose
+		#   transformMatrix = coreBoneRotBoneSpace * boneAbsRotInAnimPose
+		#   v = mesh * transformMatrix + translationBoneSpace
+		# To calculate "coreBoneTranslationBoneSpace" (ltrans) and "coreBoneRotBoneSpace" (lquat)
+		# we invert the absolute rotation and translation.
+		
+		
 		
 		self.id = len(skeleton.bones)
 		skeleton.bones.append(self)
@@ -793,12 +821,20 @@ class Cal3DBone(object):
 		# We need to negate quaternion W value, but why ?
 		buff+=('\t\t<TRANSLATION>%.6f %.6f %.6f</TRANSLATION>\n' % \
 				 (self.loc[0], self.loc[1], self.loc[2]))
-		buff+=('\t\t<ROTATION>%.6f %.6f %.6f %.6f</ROTATION>\n' % \
-				 (self.quat[0], self.quat[1], self.quat[2], self.quat[3]))
+		if True:
+			buff+=('\t\t<ROTATION>%.6f %.6f %.6f %.6f</ROTATION>\n' % \
+				 (self.quat.x, self.quat.y, self.quat.z, -self.quat.w))
+		else:
+			buff+=('\t\t<ROTATION>%.6f %.6f %.6f %.6f</ROTATION>\n' % \
+				 (-self.quat[0], -self.quat[1], -self.quat[2], -self.quat[3]))
 		buff+=('\t\t<LOCALTRANSLATION>%.6f %.6f %.6f</LOCALTRANSLATION>\n' % \
 				 (self.lloc[0], self.lloc[1], self.lloc[2]))
-		buff+=('\t\t<LOCALROTATION>%.6f %.6f %.6f %.6f</LOCALROTATION>\n' % \
-				 (self.lquat[0], self.lquat[1], self.lquat[2], self.lquat[3]))
+		if  True:
+			buff+=('\t\t<LOCALROTATION>%.6f %.6f %.6f %.6f</LOCALROTATION>\n' % \
+				 (self.lquat.x, self.lquat.y, self.lquat.z, -self.lquat.w))
+		else:
+			buff+=('\t\t<LOCALROTATION>%.6f %.6f %.6f %.6f</LOCALROTATION>\n' % \
+				 (-self.lquat[0], -self.lquat[1], -self.lquat[2], -self.lquat[3]))
 		if self.cal3d_parent:
 			buff+=('\t\t<PARENTID>%i</PARENTID>\n' % self.cal3d_parent.id)
 		else:
@@ -845,8 +881,8 @@ class Cal3DKeyFrame(object):
 	__slots__ = 'time', 'loc', 'quat'
 	def __init__(self, time, loc, quat):
 		self.time = time
-		self.loc  = loc
-		self.quat = quat
+		self.loc  = loc.copy()
+		self.quat = quat.copy()
 	
 	def writeCal3D(self, file):
 		buff=('\t\t<KEYFRAME TIME="%.6f">\n' % self.time)
@@ -854,7 +890,7 @@ class Cal3DKeyFrame(object):
 				 (self.loc[0], self.loc[1], self.loc[2]))
 		# We need to negate quaternion W value, but why ?
 		buff+=('\t\t\t<ROTATION>%.6f %.6f %.6f %.6f</ROTATION>\n' % \
-				 (self.quat[0], self.quat[1], self.quat[2], -self.quat[3]))
+				 (self.quat.x, self.quat.y, self.quat.z, self.quat.w))
 		buff+=('\t\t</KEYFRAME>\n')
 		return buff
 
@@ -991,10 +1027,10 @@ def getBakedPoseData(ob_arm, start_frame, end_frame, ACTION_BAKE = False, ACTION
 					if   curve_name == 'LocX':  loc[0] = val
 					elif curve_name == 'LocY':  loc[1] = val
 					elif curve_name == 'LocZ':  loc[2] = val
-					elif curve_name == 'QuatW': quat[3]  = val
-					elif curve_name == 'QuatX': quat[0]  = val
-					elif curve_name == 'QuatY': quat[1]  = val
-					elif curve_name == 'QuatZ': quat[2]  = val
+					elif curve_name == 'QuatW': quat.w  = val
+					elif curve_name == 'QuatX': quat.x  = val
+					elif curve_name == 'QuatY': quat.y = val
+					elif curve_name == 'QuatZ': quat.z  = val
 			
 				bake_data[frame_index][bone_name] = loc, quat
 			else:
@@ -1152,17 +1188,17 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 						else:
 							posebonemat=blender_armature.matrix_world*posebonemat
 					#reverse order of multiplication!!!
-						loc = [posebonemat[3][0],
+						loc = mathutils.Vector((posebonemat[3][0],
 						posebonemat[3][1],
 						posebonemat[3][2],
-						]
+						))
 					#rot=posebonemat.to_quat().normalize()
 						rot = posebonemat.to_quaternion() 
 					#changed from to_quat in 2.57 -mikshaw
 						rot.normalize() 
-						rot = [rot.w,rot.x,rot.y,rot.z]
+						#rot = [rot.w,rot.x,rot.y,rot.z]
 #animation.addkeyforbone(bone.id, time, loc, rot)
-						rot = tuple(rot)
+						#rot = tuple(rot)
 						#print("keyfram at %f\n" %time)
 						keyfram=Cal3DKeyFrame(time, loc, rot) 
 						animation.tracks[bonename].keyframes.append( keyfram )
@@ -1250,10 +1286,10 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 							if   curve_name == 'LocX':  trans[0] = val
 							elif curve_name == 'LocY':  trans[1] = val
 							elif curve_name == 'LocZ':  trans[2] = val
-							elif curve_name == 'QuatW': quat[3]  = val
-							elif curve_name == 'QuatX': quat[0]  = val
-							elif curve_name == 'QuatY': quat[1]  = val
-							elif curve_name == 'QuatZ': quat[2]  = val
+							elif curve_name == 'QuatW': quat.w = val
+							elif curve_name == 'QuatX': quat.x  = val
+							elif curve_name == 'QuatY': quat.y  = val
+							elif curve_name == 'QuatZ': quat.z  = val
 					
 						transt = vector_by_matrix_3x3(trans, bone.matrix)
 						loc = vector_add(bone.loc, transt)
