@@ -46,133 +46,7 @@ def best_armature_root(armature):
 	return bones[-1][1] # bone with most children
 
 
-#Vector = Blender.Mathutils.Vector
-#Quaternion = Blender.Mathutils.Quaternion
-#Matrix = Blender.Mathutils.Matrix
 
-# HACK -- it seems that some Blender versions don't define sys.argv,
-# which may crash Python if a warning occurs.
-# if not hasattr(sys, 'argv'): sys.argv = ['???']
-
-def matrix_multiply(b, a):
-	return [ [
-		a[0][0] * b[0][0] + a[0][1] * b[1][0] + a[0][2] * b[2][0],
-		a[0][0] * b[0][1] + a[0][1] * b[1][1] + a[0][2] * b[2][1],
-		a[0][0] * b[0][2] + a[0][1] * b[1][2] + a[0][2] * b[2][2],
-		0.0,
-		], [
-		a[1][0] * b[0][0] + a[1][1] * b[1][0] + a[1][2] * b[2][0],
-		a[1][0] * b[0][1] + a[1][1] * b[1][1] + a[1][2] * b[2][1],
-		a[1][0] * b[0][2] + a[1][1] * b[1][2] + a[1][2] * b[2][2],
-		0.0,
-		], [
-		a[2][0] * b[0][0] + a[2][1] * b[1][0] + a[2][2] * b[2][0],
-		a[2][0] * b[0][1] + a[2][1] * b[1][1] + a[2][2] * b[2][1],
-		a[2][0] * b[0][2] + a[2][1] * b[1][2] + a[2][2] * b[2][2],
-		 0.0,
-		], [
-		a[3][0] * b[0][0] + a[3][1] * b[1][0] + a[3][2] * b[2][0] + b[3][0],
-		a[3][0] * b[0][1] + a[3][1] * b[1][1] + a[3][2] * b[2][1] + b[3][1],
-		a[3][0] * b[0][2] + a[3][1] * b[1][2] + a[3][2] * b[2][2] + b[3][2],
-		1.0,
-		] ]
-
-# multiplies 2 quaternions in x,y,z,w notation
-def quaternion_multiply(q1, q2):
-	return Quaternion(\
-		q2[3] * q1[0] + q2[0] * q1[3] + q2[1] * q1[2] - q2[2] * q1[1],
-		q2[3] * q1[1] + q2[1] * q1[3] + q2[2] * q1[0] - q2[0] * q1[2],
-		q2[3] * q1[2] + q2[2] * q1[3] + q2[0] * q1[1] - q2[1] * q1[0],
-		q2[3] * q1[3] - q2[0] * q1[0] - q2[1] * q1[1] - q2[2] * q1[2],\
-		)
-
-def matrix_translate(m, v):
-	m[3][0] += v[0]
-	m[3][1] += v[1]
-	m[3][2] += v[2]
-	return m
-
-def matrix2quaternion(m):
-	s = math.sqrt(abs(m[0][0] + m[1][1] + m[2][2] + m[3][3]))
-	if s == 0.0:
-		x = abs(m[2][1] - m[1][2])
-		y = abs(m[0][2] - m[2][0])
-		z = abs(m[1][0] - m[0][1])
-		if   (x >= y) and (x >= z): return mathutils.Quaternion(1.0, 0.0, 0.0, 0.0)
-		elif (y >= x) and (y >= z): return mathutils.Quaternion(0.0, 1.0, 0.0, 0.0)
-		else:                       return mathutils.Quaternion(0.0, 0.0, 1.0, 0.0)
-			
-	q = mathutils.Quaternion([
-		-(m[2][1] - m[1][2]) / (2.0 * s),
-		-(m[0][2] - m[2][0]) / (2.0 * s),
-		-(m[1][0] - m[0][1]) / (2.0 * s),
-		0.5 * s
-		])
-	q.normalize()
-	#print q
-	return q
-
-def vector_by_matrix_3x3(p, m):
-	return [p[0] * m[0][0] + p[1] * m[1][0] + p[2] * m[2][0],
-					p[0] * m[0][1] + p[1] * m[1][1] + p[2] * m[2][1],
-					p[0] * m[0][2] + p[1] * m[1][2] + p[2] * m[2][2]]
-
-def vector_add(v1, v2):
-	return [v1[0]+v2[0], v1[1]+v2[1], v1[2]+v2[2]]
-
-def vector_sub(v1, v2):
-	return [v1[0]-v2[0], v1[1]-v2[1], v1[2]-v2[2]]
-
-def quaternion2matrix(q):
-	xx = q[0] * q[0]
-	yy = q[1] * q[1]
-	zz = q[2] * q[2]
-	xy = q[0] * q[1]
-	xz = q[0] * q[2]
-	yz = q[1] * q[2]
-	wx = q[3] * q[0]
-	wy = q[3] * q[1]
-	wz = q[3] * q[2]
-	return mathutils.Matrix([[ 1.0 - 2.0 * (yy + zz),       2.0 * (xy + wz),       2.0 * (xz - wy), 0.0],
-					[      2.0 * (xy - wz), 1.0 - 2.0 * (xx + zz),       2.0 * (yz + wx), 0.0],
-					[      2.0 * (xz + wy),       2.0 * (yz - wx), 1.0 - 2.0 * (xx + yy), 0.0],
-					[0.0                  , 0.0                  , 0.0                  , 1.0]])
-
-def matrix_invert(m):
-	det = (m[0][0] * (m[1][1] * m[2][2] - m[2][1] * m[1][2])
-			 - m[1][0] * (m[0][1] * m[2][2] - m[2][1] * m[0][2])
-			 + m[2][0] * (m[0][1] * m[1][2] - m[1][1] * m[0][2]))
-	if det == 0.0: return None
-	det = 1.0 / det
-	r = [ [
-			det * (m[1][1] * m[2][2] - m[2][1] * m[1][2]),
-		- det * (m[0][1] * m[2][2] - m[2][1] * m[0][2]),
-			det * (m[0][1] * m[1][2] - m[1][1] * m[0][2]),
-			0.0,
-		], [
-		- det * (m[1][0] * m[2][2] - m[2][0] * m[1][2]),
-			det * (m[0][0] * m[2][2] - m[2][0] * m[0][2]),
-		- det * (m[0][0] * m[1][2] - m[1][0] * m[0][2]),
-			0.0
-		], [
-			det * (m[1][0] * m[2][1] - m[2][0] * m[1][1]),
-		- det * (m[0][0] * m[2][1] - m[2][0] * m[0][1]),
-			det * (m[0][0] * m[1][1] - m[1][0] * m[0][1]),
-			0.0,
-		] ]
-	r.append([
-		-(m[3][0] * r[0][0] + m[3][1] * r[1][0] + m[3][2] * r[2][0]),
-		-(m[3][0] * r[0][1] + m[3][1] * r[1][1] + m[3][2] * r[2][1]),
-		-(m[3][0] * r[0][2] + m[3][1] * r[1][2] + m[3][2] * r[2][2]),
-		1.0,
-		])
-	return r
-
-
-def point_by_matrix(p, m):
-	return [p[0] * m[0][0] + p[1] * m[1][0] + p[2] * m[2][0] + m[3][0],
-					p[0] * m[0][1] + p[1] * m[1][1] + p[2] * m[2][1] + m[3][1],
-					p[0] * m[0][2] + p[1] * m[1][2] + p[2] * m[2][2] + m[3][2]]
 
 # Hack for having the model rotated right.
 # Put in BASE_MATRIX your own rotation if you need some.
@@ -241,8 +115,8 @@ class Cal3DMesh(object):
 		
 		#BPyMesh.meshCalcNormals(blend_mesh)
 		blend_mesh.calc_normals()
-		self.matrix = ob.matrix_world
-		loc, rot, sca = self.matrix.decompose()
+		self.matrix = ob.matrix_world.copy()
+		loc, rot, sca = self.matrix.copy().decompose()
 		self.matrix_normal = rot.to_matrix() #mathutils.Matrix.Rotation(rot.angle, 4, rot.axis)
 		
 		#if BASE_MATRIX:
@@ -421,7 +295,7 @@ class Cal3DSubMesh(object):
 			
 			# No match, add a new vert
 			# Use the first verts influences
-			vertex = Cal3DVertex(mathutils.Vector(blend_vert.co), normal, maps, vertex_list[0].influences)
+			vertex = Cal3DVertex(blend_vert.co, normal, maps, vertex_list[0].influences)
 			vertex_list.append(vertex)
 			# self.vert_mapping[blend_index] = len(self.vert_mapping)
 			self.vert_count +=1
@@ -551,8 +425,8 @@ class Cal3DSubMesh(object):
 class Cal3DVertex(object):
 	__slots__ = 'loc','normal','collapse_to','face_collapse_count','maps','influences','weight','cloned_from','clones','id'
 	def __init__(self, loc, normal, maps, blend_influences):
-		self.loc    = loc
-		self.normal = normal
+		self.loc    = mathutils.Vector(loc.copy())
+		self.normal = mathutils.Vector(normal.copy())
 		#print("CALVERTEX")
 		#print(self.normal)
 		self.collapse_to         = None
@@ -605,21 +479,9 @@ class Cal3DVertex(object):
 				(self.id, len(self.influences)))
 		daloc=matrix*self.loc
 		# Calculate global coords
-		daloc[0] = matrix[0][0] * self.loc[0] + \
-                matrix[0][1] *self.loc[1] + \
-                matrix[0][2] * self.loc[2] + \
-                matrix[0][3]
-
-		daloc[1] = matrix[1][0] * self.loc[0] + \
-                matrix[1][1] * self.loc[1] + \
-                matrix[1][2] * self.loc[2] + \
-                matrix[1][3]
-
-		daloc[2] = matrix[2][0] * self.loc[0] + \
-                matrix[2][1] * self.loc[1] + \
-                matrix[2][2] *self.loc[2] + \
-                matrix[2][3]
-		buff+=('\t\t\t<POS>%.6f %.6f %.6f</POS>\n' % tuple(matrix*mathutils.Vector(self.loc)))
+		
+		print(matrix)
+		buff+=('\t\t\t<POS>%.6f %.6f %.6f</POS>\n' % (daloc[0],daloc[1],daloc[2]))
 		
 		danormal=matrix_normal*self.normal;
 		danormal.normalize()
@@ -887,10 +749,10 @@ class Cal3DKeyFrame(object):
 	def writeCal3D(self, file):
 		buff=('\t\t<KEYFRAME TIME="%.6f">\n' % self.time)
 		buff+=('\t\t\t<TRANSLATION>%.6f %.6f %.6f</TRANSLATION>\n' % \
-				 (self.loc[0], self.loc[1], self.loc[2]))
+				 (self.loc.x, self.loc.y, self.loc.z))
 		# We need to negate quaternion W value, but why ?
 		buff+=('\t\t\t<ROTATION>%.6f %.6f %.6f %.6f</ROTATION>\n' % \
-				 (self.quat.x, self.quat.y, self.quat.z, self.quat.w))
+				 (self.quat.x, self.quat.y, self.quat.z, -self.quat.w))
 		buff+=('\t\t</KEYFRAME>\n')
 		return buff
 
@@ -1196,6 +1058,20 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 						rot = posebonemat.to_quaternion() 
 					#changed from to_quat in 2.57 -mikshaw
 						rot.normalize() 
+						
+						posebonemat = mathutils.Matrix(pose.bones[bonename].matrix )
+						loc = mathutils.Vector((posebonemat[3][0],
+						posebonemat[3][1],
+						posebonemat[3][2],
+						))
+						quat=posebonemat.to_quaternion()
+						loc=bone.matrix*loc
+						loc+=bone.loc
+						quat*=bone.quat
+						
+					
+						quat.normalize()
+						
 						#rot = [rot.w,rot.x,rot.y,rot.z]
 #animation.addkeyforbone(bone.id, time, loc, rot)
 						#rot = tuple(rot)
@@ -1251,7 +1127,7 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 						quat = mathutils.Quaternion(quat)
 					
 						quat.normalize()
-						quat = tuple(quat)
+						#quat = tuple(quat)
 					
 						track.keyframes.append( Cal3DKeyFrame(cal3dtime, loc, quat) )
 			
