@@ -116,6 +116,7 @@ class Cal3DMesh(object):
 		#BPyMesh.meshCalcNormals(blend_mesh)
 		blend_mesh.calc_normals()
 		self.matrix = ob.matrix_world.copy()
+		#self.matrix= ob.matrix_local.copy()
 		loc, rot, sca = self.matrix.copy().decompose()
 		self.matrix_normal = rot.to_matrix() #mathutils.Matrix.Rotation(rot.angle, 4, rot.axis)
 		
@@ -477,7 +478,7 @@ class Cal3DVertex(object):
 			collapse_id = -1
 		buff=('\t\t<VERTEX ID="%i" NUMINFLUENCES="%i">\n' % \
 				(self.id, len(self.influences)))
-		daloc=matrix*self.loc
+		daloc=matrix*mathutils.Vector((self.loc[0],self.loc[1],self.loc[2]))
 		# Calculate global coords
 		
 		print(matrix)
@@ -573,7 +574,7 @@ class Cal3DBone(object):
 		#if cal3d_parent:bonespace=cal3d_parent.quat.to_matrix()*blend_bone.matrix;
 		quat =bonespace.to_quaternion()
 				
-		self.child_loc=tail-head
+		#self.child_loc=tail-head
 		#quat =  matrix2quaternion(mymat)
 		#if quat.w<0: quat.x=quat.x*-1.0;quat.y=quat.y*-1.0;quat.z=quat.z*-1.0 ;quat.w=quat.w*-1.0
 		# Pose location
@@ -665,7 +666,19 @@ class Cal3DBone(object):
 		#   v = mesh * transformMatrix + translationBoneSpace
 		# To calculate "coreBoneTranslationBoneSpace" (ltrans) and "coreBoneRotBoneSpace" (lquat)
 		# we invert the absolute rotation and translation.
+		self.translation_absolute = self.loc.copy()
+		self.rotation_absolute = self.quat.copy()
 		
+		if self.cal3d_parent:
+			self.translation_absolute.rotate(self.cal3d_parent.rotation_absolute)
+			self.translation_absolute += self.cal3d_parent.translation_absolute
+
+			self.rotation_absolute.rotate(self.cal3d_parent.rotation_absolute)
+			self.rotation_absolute.normalize()
+	
+		self.lquat = self.rotation_absolute.inverted()
+		self.lloc = -self.translation_absolute
+		self.lloc.rotate(self.lquat)
 		
 		
 		self.id = len(skeleton.bones)
@@ -686,17 +699,13 @@ class Cal3DBone(object):
 		if True:
 			buff+=('\t\t<ROTATION>%.6f %.6f %.6f %.6f</ROTATION>\n' % \
 				 (self.quat.x, self.quat.y, self.quat.z, -self.quat.w))
-		else:
-			buff+=('\t\t<ROTATION>%.6f %.6f %.6f %.6f</ROTATION>\n' % \
-				 (-self.quat[0], -self.quat[1], -self.quat[2], -self.quat[3]))
+		
 		buff+=('\t\t<LOCALTRANSLATION>%.6f %.6f %.6f</LOCALTRANSLATION>\n' % \
 				 (self.lloc[0], self.lloc[1], self.lloc[2]))
 		if  True:
 			buff+=('\t\t<LOCALROTATION>%.6f %.6f %.6f %.6f</LOCALROTATION>\n' % \
 				 (self.lquat.x, self.lquat.y, self.lquat.z, -self.lquat.w))
-		else:
-			buff+=('\t\t<LOCALROTATION>%.6f %.6f %.6f %.6f</LOCALROTATION>\n' % \
-				 (-self.lquat[0], -self.lquat[1], -self.lquat[2], -self.lquat[3]))
+		
 		if self.cal3d_parent:
 			buff+=('\t\t<PARENTID>%i</PARENTID>\n' % self.cal3d_parent.id)
 		else:
@@ -970,7 +979,8 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 		#blend_mesh = ob.getData(mesh=1)
 		
 		if not ob.data.faces:			continue
-		meshes.append( Cal3DMesh(ob, ob.data, blend_world) )
+		
+		meshes.append( Cal3DMesh(ob, ob.to_mesh(bpy.context.scene,False,'PREVIEW'), blend_world) )
 	
 	# ---- Export animations --------------------------------------------------
 	#backup_action = blender_armature.action
@@ -1064,13 +1074,13 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 						posebonemat[3][1],
 						posebonemat[3][2],
 						))
-						quat=posebonemat.to_quaternion()
+						#rot=posebonemat.to_quaternion()
 						loc=bone.matrix*loc
 						loc+=bone.loc
-						quat*=bone.quat
+						#rot*=bone.quat
 						
 					
-						quat.normalize()
+						rot.normalize()
 						
 						#rot = [rot.w,rot.x,rot.y,rot.z]
 #animation.addkeyforbone(bone.id, time, loc, rot)
