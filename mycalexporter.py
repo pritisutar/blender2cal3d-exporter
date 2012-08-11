@@ -1,7 +1,7 @@
 bl_info = { # changed from bl_addon_info in 2.57 -mikshaw
     "name": "Export Cal3d (.cfg)",
     "author": "MpEbUtCh3r et al",
-    "version": (0,5,1),
+    "version": (0,5,66),
     "blender": (2, 6, 2),
     "api": 31847,
     "location": "File > Export > Cal3d Skeletal Mesh/Animation Data (.cfg)",
@@ -72,7 +72,7 @@ class Cal3DMaterial(object):
 		if blend_material:
 			self.amb  = tuple([int(c*blend_material.ambient) for c in amb] + [255])
 			self.diff = tuple([int(c*255) for c in blend_material.diffuse_color] + [int(blend_material.alpha*255)])
-			self.spec = tuple([int(c*255) for c in blend_material.diffuse_color] + [int(blend_material.alpha*255)])
+			self.spec = tuple([int(c*255) for c in blend_material.specular_color] + [int(blend_material.alpha*255)])
 			self.shininess = (float(blend_material.specular_hardness)-1)/5.10
 		else:
 			self.amb  = tuple(amb + [255])
@@ -85,8 +85,10 @@ class Cal3DMaterial(object):
 			#if image:
 				#print("image")
 				#print(image) no multi tex for the moement
-		if blend_images:self.maps_filenames.append( blend_images) #.split('\\')[-1].split('/')[-1] )
-		print( blend_images)
+		if blend_images :
+			if blend_images!=blend_material.name:
+				self.maps_filenames.append( blend_images.split('\\')[-1].split('/')[-1] )
+		#print( blend_images)
 		self.id = len(MATERIALS)
 		MATERIALS[blend_material, blend_images] = self
 	
@@ -101,8 +103,8 @@ class Cal3DMaterial(object):
 		buff+=('\t<SHININESS>%.6f</SHININESS>\n' % self.shininess)
 		
 		for map_filename in self.maps_filenames:
-			print(map_filename)
-			buff+=('\t<MAP>%s</MAP>\n' % map_filename)
+			#print(map_filename)
+			buff+=('\t<MAP>%s.tga</MAP>\n' % map_filename)
 		
 		buff+=('</MATERIAL>\n')
 		file.write(bytes(buff, 'UTF-8'))
@@ -127,12 +129,20 @@ class Cal3DMesh(object):
 		blend_materials = blend_mesh.materials
 		uvlayers = ()
 		mat = None # incase we have no materials
-		print( len(blend_mesh.uv_textures))
+		print("UV number:%d\n"% len(blend_mesh.uv_textures))
 		if len(blend_mesh.uv_textures)>0:
 			uvlayers = blend_mesh.uv_textures
 			if len(uvlayers) == 1:
 				for f in blend_mesh.faces:
-					image =	ob.data.materials[0].name	
+					mat0=ob.data.materials[f.material_index]
+					if mat0:
+						tex0=mat0.texture_slots[0]
+						if tex0:
+							image=tex0.texture.image.filepath
+						else: 
+							image="debug this...image MUST BE SOMETHING TO GENERATE...texcoord i tkhink..must see"
+							image =	ob.data.materials[f.material_index].name
+							#image =""
 								#(f.image,)  bit in a tuple so we can match multi UV code
 					if blend_materials:	mat =	blend_materials[f.material_index] # if no materials, mat will always be None
 					face_groups.setdefault( (mat,image), (mat,image,[]) )[2].append( f )
@@ -165,8 +175,8 @@ class Cal3DMesh(object):
 				face_groups.setdefault( (mat,()), (mat,(),[]) )[2].append( f )
 		
 		for blend_material, blend_images, faces in face_groups.values():
-			print(blend_images)
-			print("newmaterial")
+			#print(blend_images)
+			#print("newmaterial")
 			try:		material = MATERIALS[blend_material, blend_images]
 			except:		material = MATERIALS[blend_material, blend_images] = Cal3DMaterial(blend_world, blend_material, blend_images)
 			
@@ -277,8 +287,25 @@ class Cal3DSubMesh(object):
 			influences = []	
 			for j in range(len(ob.data.vertices[blend_index].groups )):
 				inf = [ob.vertex_groups[ ob.data.vertices[ blend_index ].groups[j].group ].name, ob.data.vertices[blend_index].groups[j].weight]
+				#print(ob.vertex_groups[ ob.data.vertices[ blend_index ].groups[j].group ].name)
+				try:
+					bone  = BONES[ob.vertex_groups[ ob.data.vertices[ blend_index ].groups[j].group ].name] #look up cal3d_bone
+				except:
+					#print( "found an unknow vertex group: " + ob.vertex_groups[ ob.data.vertices[ blend_index ].groups[j].group ].name )
+					continue
 				influences.append( inf )
-
+			#check if parent is a bone
+			for j in range(1):
+					try:
+					    
+						bone  = BONES[ob.parent_bone] #look up cal3d_bone
+					except:
+						continue
+					#this mesh has a parent_bone so generate inf for its
+					#print(ob.parent_bone)
+					#print("create parent that is not part of blender\n")
+					inf = [ob.parent_bone,1.0]
+					if len(influences)==0 : influences.append( inf )
 
 			vertex = Cal3DVertex(blend_vert.co, normal, maps, influences)#blend_mesh.getVertexInfluences(blend_index))
 			self.vertices.append([vertex])
@@ -412,7 +439,7 @@ class Cal3DSubMesh(object):
 		for v in self.vertices:
 			for item in v:
 				item.id = i
-				buff+=item.writeCal3D(file, matrix, matrix_normal)
+				buff+=item.writeCal3D(file, matrix, matrix_normal,len(self.material.maps_filenames))
 				i += 1
 		
 		for item in self.springs:
@@ -471,7 +498,7 @@ class Cal3DVertex(object):
 					self.influences.append(Cal3DInfluence(bone, weight / sum))
 	
 	
-	def writeCal3D(self, file, matrix, matrix_normal):
+	def writeCal3D(self, file, matrix, matrix_normal,numtexcoord):
 		if self.collapse_to:
 			collapse_id = self.collapse_to.id
 		else:
@@ -481,7 +508,7 @@ class Cal3DVertex(object):
 		daloc=matrix*mathutils.Vector((self.loc[0],self.loc[1],self.loc[2]))
 		# Calculate global coords
 		
-		print(matrix)
+		#print(matrix)
 		buff+=('\t\t\t<POS>%.6f %.6f %.6f</POS>\n' % (daloc[0],daloc[1],daloc[2]))
 		
 		danormal=matrix_normal*self.normal;
@@ -492,11 +519,12 @@ class Cal3DVertex(object):
 			buff+=('\t\t\t<COLLAPSEID>%i</COLLAPSEID>\n' % collapse_id)
 			buff+=('\t\t\t<COLLAPSECOUNT>%i</COLLAPSECOUNT>\n' % \
 					 self.face_collapse_count)
-		
-		for uv in self.maps:
+		for i in range(numtexcoord):
+			buff+=('\t\t\t<TEXCOORD>%.6f %.6f</TEXCOORD>\n' % self.maps[i])
+		#for uv in self.maps:
 			# we cant have more UV's then our materials image maps
 			# check for this
-			buff+=('\t\t\t<TEXCOORD>%.6f %.6f</TEXCOORD>\n' % uv)
+			#buff+=('\t\t\t<TEXCOORD>%.6f %.6f</TEXCOORD>\n' % uv)
 		
 		for item in self.influences:
 			buff+=item.writeCal3D(file)
@@ -557,9 +585,9 @@ class Cal3DSkeleton(object):
 BONES = {}
 POSEBONES= {}
 class Cal3DBone(object):
-	__slots__ = 'translation_absolute','rotation_absolute','head', 'tail', 'name', 'cal3d_parent', 'loc','child_loc', 'quat', 'children', 'matrix', 'lloc', 'lquat', 'id'
+	__slots__ = 'blendbone','translation_absolute','rotation_absolute','head', 'tail', 'name', 'cal3d_parent', 'loc','child_loc', 'quat', 'children', 'matrix', 'lloc', 'lquat', 'id'
 	def __init__(self, skeleton, blend_bone, arm_matrix, cal3d_parent=None):
-		
+		self.blendbone=blend_bone
 		# head tail of the bone relative to parent
 		#head = arm_matrix*mathutils.Vector(blend_bone.head_local)
 		#tail = arm_matrix*mathutils.Vector(blend_bone.tail_local)
@@ -686,8 +714,44 @@ class Cal3DBone(object):
 		BONES[self.name] = self
 		
 		if len(blend_bone.children)<1 :	return
+		
+		#ancestors=[];
+		#cur=self;
+		#while cur.cal3d_parent :
+		#	ancestors.append(cur.cal3d_parent.name)
+		#	cur=cur.cal3d_parent
+		#crawl ancestors of blend_bone
 		for blend_child in blend_bone.children:
-			self.children.append(Cal3DBone(skeleton, blend_child, arm_matrix, self))
+			#check for cyclein skeleton to define wich bone is the father
+			try:
+				father=BONES[blend_child.name];
+			except:
+				#dirty: check lenght of bone in order to select only the shortest (avoid artefact for specific models...
+				father=self;
+				mymat= father.quat.to_matrix()#blend_bone.parent.matrix.copy();
+				mymat.invert();
+				parent_head=mymat*father.head
+			
+				parent_tail=mymat*father.tail
+				parent_tail=parent_tail+ blend_child.head # vector_add(parent_tail, head)
+				parenth2tail = parent_tail-parent_head 	
+				
+					
+					
+					
+				
+				l=parenth2tail.x*parenth2tail.x+parenth2tail.y*parenth2tail.y+parenth2tail.z*parenth2tail.z
+				print(parenth2tail)
+				print(blend_child.name)
+				father=blend_child
+				while father.parent: 
+					father=father.parent
+				print (father.name)	
+				if blend_child.name[0:9]!='Root_Fing': #Filter here
+					#if blend_child.name[0:18]!='Bone_Body_Root_Arm':
+					self.children.append(Cal3DBone(skeleton, blend_child, arm_matrix, self))
+				
+			
 		
 
 	def writeCal3D(self, file):
@@ -919,22 +983,35 @@ def getBakedPoseData(ob_arm, start_frame, end_frame, ACTION_BAKE = False, ACTION
 
 	
 
-
-
+#DIRTY GLOBALS
+selected=None
+blender_armature=None
+file_only_noext=''
+base_only =''
+skeleton=None
+globfilename=''
+def new_name(dataname, ext):
+		#return file_only_noext + '_' + BPySys.cleanName(dataname) + ext
+		global file_only_noext
+		return file_only_noext + '_' + dataname + ext
 def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACTION_ONLY=True, PREF_SCENE_FRAMES=False):
+	global blender_armature
+	global file_only_noext
+	global skeleton
+	global base_only
+	global globfilename
+	global selected
 	bpy.context.scene.frame_set(bpy.context.scene.frame_start);
 	bpy.ops.object.mode_set(mode='OBJECT')
 	sce =bpy.context.scene;
 	if not filename.endswith('.cfg'):
 		filename += '.cfg'
-	
-	file_only = filename.split('/')[-1].split('\\')[-1]
+	globfilename=filename
+	file_only = globfilename.split('/')[-1].split('\\')[-1]
 	file_only_noext = file_only.split('.')[0]
-	base_only = filename[:-len(file_only)]
+	base_only = globfilename[:-len(file_only)]
 	
-	def new_name(dataname, ext):
-		#return file_only_noext + '_' + BPySys.cleanName(dataname) + ext
-		return file_only_noext + '_' + dataname + ext
+
 	#if EXPORT_FOR_SOYA:
 	#	global BASE_MATRIX
 	#	BASE_MATRIX = matrix_rotate_x(-math.pi / 2.0)
@@ -944,9 +1021,10 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 	blend_world = sce.world
 	# ---- Export skeleton (armature) ----------------------------------------
 	
-	skeleton = Cal3DSkeleton()
+	global skeleton 
+	skeleton= Cal3DSkeleton()
 
-
+	selected=bpy.context.selected_objects
 	blender_armature = [ob for ob in bpy.context.selected_objects if ob.type == 'ARMATURE']
 	#if len(blender_armature) > 1:	print "Found multiple armatures! using ",armatures[0].name
 	if blender_armature: blender_armature = blender_armature[0]
@@ -959,7 +1037,7 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 		
 		if not blender_armature:
 			print('Aborting%t|No Armature in selection only export meshes and texture youwill have to merge the two differtents.cfg mannually')
-			#return
+			return
 
 	# we need pose bone locations
 		
@@ -969,18 +1047,29 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 		if not masterbone.parent:
 			#if blender_armature:Cal3DBone(skeleton, best_armature_root(blender_armature.data), blender_armature.matrix_world)
 			Cal3DBone(skeleton, masterbone, blender_armature.matrix_world)
-			
+
+	
+	buildtempSkeleton((-1,0,0),skeleton) 
+	return
+	
+def continuexport():
+	global file_only_noext
+	global skeleton
+	global base_only
+	global globfilename
+	global blender_armature
+	global selected
 	# ---- Export Mesh data ---------------------------------------------------
 	meshes = []
-	for ob in  bpy.context.selected_objects:
+	for ob in  selected: #bpy.context.selected_objects:
 		print( "Processing mesh: "+ ob.name+ ob.type )
 		if ob.type != 'MESH':continue
-		print("mesh found in selection")
+		#print("mesh found in selection")
 		#blend_mesh = ob.getData(mesh=1)
 		
 		if not ob.data.faces:			continue
 		
-		meshes.append( Cal3DMesh(ob, ob.to_mesh(bpy.context.scene,False,'PREVIEW'), blend_world) )
+		meshes.append( Cal3DMesh(ob, ob.to_mesh(bpy.context.scene,False,'PREVIEW'), bpy.context.scene.world) )
 	
 	# ---- Export animations --------------------------------------------------
 	#backup_action = blender_armature.action
@@ -989,7 +1078,9 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 		ANIMATIONS = []
 		SUPPORTED_IPOS = 'QuatW', 'QuatX', 'QuatY', 'QuatZ', 'LocX', 'LocY', 'LocZ'
 	
-		if PREF_ACT_ACTION_ONLY:	action_items = [(blender_armature.animation_data.action.name, blender_armature.animation_data.action)]
+		#if PREF_ACT_ACTION_ONLY:
+		if True:
+			action_items = [(blender_armature.animation_data.action.name, blender_armature.animation_data.action)]
 		else:						action_items = Blender.Armature.NLA.GetActions().items()
 	
 		#print len(action_items), 'action_items'
@@ -997,7 +1088,8 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 		for animation_name, blend_action in action_items:
 		
 		# get frame range
-			if PREF_SCENE_FRAMES:
+			#if PREF_SCENE_FRAMES:
+			if False:
 				action_start=	Blender.Get('staframe')
 				action_end=		Blender.Get('endframe')
 			else:
@@ -1016,7 +1108,7 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 			ANIMATIONS.append(animation)
 			animation.duration = 0.0
 
-			if PREF_BAKE_MOTION:
+			if True: #PREF_BAKE_MOTION:
 			# We need to set the action active if we are getting baked data
 		#	pose_data = getBakedPoseData(blender_armature, action_start, action_end)
  			#pose = blender_armature.pose
@@ -1047,7 +1139,7 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 						try:
 							bone  = BONES[bonename] #look up cal3d_bone
 						except:
-							print( "found a posebone animating a bone that is not part of the exported armature: " + bonename )
+							#print( "found a posebone animating a bone that is not part of the exported armature: " + bonename )
 							continue
 						posebonemat = mathutils.Matrix(pose.bones[bonename].matrix ) # @ivar poseMatrix: The total transformation of this PoseBone including constraints. -- different from localMatrix
 						
@@ -1120,7 +1212,7 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 #			bone = BONES[bone_name]
 #			track = animation.tracks[bone_name] = Cal3DTrack(bone)
 			
-				if PREF_BAKE_MOTION:
+				if True: #PREF_BAKE_MOTION:
 					for i in xrange(action_end-action_end):
 #action_end - action_start):
 						cal3dtime = i / 25.0 # assume 25FPS by default
@@ -1201,9 +1293,10 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 
 	buff=('# Cal3D model exported from Blender with export_cal3d.py\n# from \n')
 	
-	if PREF_SCALE != 1.0:	buff+='scale=%.6f\n' % PREF_SCALE
+	#if PREF_SCALE != 1.0:	buff+='scale=%.6f\n' % PREF_SCALE
+	buff+='scale=%.6f\n' % 0.1
 	
-	fname = file_only_noext + '.xsf'
+	fname =  file_only_noext + '.xsf'
 	file = open( base_only +  fname, 'wb')
 	skeleton.writeCal3D(file)
 	file.close()
@@ -1222,7 +1315,7 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 					buff+=('animation=%s\n' % fname)
 	
 	for mesh in meshes:
-		print("mesh dur %s\n" %mesh.name)
+		#print("mesh dur %s\n" %mesh.name)
 		if not mesh.name.startswith('_'):
 			fname = new_name(mesh.name, '.xmf')
 			file = open(base_only + fname, 'wb')
@@ -1232,19 +1325,25 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 			buff+=('mesh=%s\n' % fname)
 	
 	materials = MATERIALS.values()
-	#old materials.sort(key = lambda a: a.id)
-	for material in materials:
+	MNames=[mname.id for mname in materials ]
+	sortedmatkey=sorted(MNames)
+	
+	#.sort() #key = lambda a: a.id)
+	for materialid in sortedmatkey:
 		# Just number materials, its less trouble
-		fname = new_name(str(material.id), '.xrf')
+		fname = new_name(str(materialid), '.xrf')
 		
 		file = open(base_only + fname, 'wb')
+		for k in materials :
+			if k.id==materialid:
+				material=k
 		material.writeCal3D(file)
 		file.close()
 		
 		buff+=('material=%s\n' % fname)
 	
 	#print 'Cal3D Saved to "%s.cfg"' % file_only_noext
-	cfg = open((filename), 'wb')
+	cfg = open((globfilename), 'wb')
 	cfg.write(bytes(buff, 'UTF-8'));	
 	cfg.close();
 	# Warnings
@@ -1290,11 +1389,11 @@ if __name__ == '__main__':
 #export class registration and interface
 from bpy.props import *
 class ExportCal3D(bpy.types.Operator):
-  '''Export to Cal3d (.cfg)'''
-  bl_idname = "export.cal3d"
-  bl_label = 'Export CAL3D'
+	'''Export to Cal3d (.cfg)'''
+	bl_idname = "export.cal3d"
+	bl_label = 'Export CAL3D'
   
-  logenum = [("console","Console","log to console"),
+	ogenum = [("console","Console","log to console"),
              ("append","Append","append to log file"),
              ("overwrite","Overwrite","overwrite log file")]
              
@@ -1307,48 +1406,232 @@ class ExportCal3D(bpy.types.Operator):
   #if( len( md5animtargets ) > 0 ):
   #	md5animtarget = EnumProperty( name="Anim", items = md5animtargets, description = "choose animation to export", default = md5animtargets[0] )
   	
-  exportModes = [("mesh & anim", "Mesh & Anim", "Export .md5mesh and .md5anim files."),
+	exportModes = [("mesh & anim", "Mesh & Anim", "Export .md5mesh and .md5anim files."),
   		 ("anim only", "Anim only.", "Export .md5anim only."),
   		 ("mesh only", "Mesh only.", "Export .md5mesh only.")]
 
-  filepath = StringProperty(subtype = 'FILE_PATH',name="File Path", description="Filepath for exporting", maxlen= 1024, default= "")
-  md5name = StringProperty(name="MD5 Name", description="MD3 header name / skin path (64 bytes)",maxlen=64,default="")
-  md5exportList = EnumProperty(name="Exports", items=exportModes, description="Choose export mode.", default='mesh & anim')
+	filepath = StringProperty(subtype = 'FILE_PATH',name="File Path", description="Filepath for exporting", maxlen= 1024, default= "")
+	md5name = StringProperty(name="MD5 Name", description="MD3 header name / skin path (64 bytes)",maxlen=64,default="")
+	md5exportList = EnumProperty(name="Exports", items=exportModes, description="Choose export mode.", default='mesh & anim')
   #md5logtype = EnumProperty(name="Save log", items=logenum, description="File logging options",default = 'console')
-  md5scale = FloatProperty(name="Scale", description="Scale all objects from world origin (0,0,0)",default=1.0,precision=5)
+	md5scale = FloatProperty(name="Scale", description="Scale all objects from world origin (0,0,0)",default=1.0,precision=5)
   #md5offsetx = FloatProperty(name="Offset X", description="Transition scene along x axis",default=0.0,precision=5)
   #md5offsety = FloatProperty(name="Offset Y", description="Transition scene along y axis",default=0.0,precision=5)
   #md5offsetz = FloatProperty(name="Offset Z", description="Transition scene along z axis",default=0.0,precision=5)
   
   
 
-  def execute(self, context):
+	def execute(self, context):
 # settings = md5Settings(savepath = self.properties.filepath,
                  #         scale = self.properties.md5scale,
                    #       exportMode = self.properties.md5exportList
                     #      )
-   export_cal3d(self.properties.filepath)
-   return {'FINISHED'}
+		
+		export_cal3d(self.properties.filepath)
+		return {'FINISHED'}
 
-  def invoke(self, context, event):
-        WindowManager = context.window_manager
+	def invoke(self, context, event):
+		WindowManager = context.window_manager
         # fixed for 2.56? Katsbits.com (via Nic B)
         # original WindowManager.add_fileselect(self)
-        WindowManager.fileselect_add(self)
-        return {"RUNNING_MODAL"}  
+		WindowManager.fileselect_add(self)
+		return {"RUNNING_MODAL"}  
 
 
 def menu_func(self, context):
-  default_path = os.path.splitext(bpy.data.filepath)[0]
-  self.layout.operator(ExportCal3D.bl_idname, text="Cal3d Model (.cfg)", icon='BLENDER').filepath = default_path
+	default_path = os.path.splitext(bpy.data.filepath)[0]
+	self.layout.operator(ExportCal3D.bl_idname, text="Cal3d Model (.cfg)", icon='BLENDER').filepath = default_path
   
 def register():
-  bpy.utils.register_module(__name__)  #mikshaw
-  bpy.types.INFO_MT_file_export.append(menu_func)
+	bpy.utils.register_module(__name__)  #mikshaw
+	bpy.types.INFO_MT_file_export.append(menu_func)
 
 def unregister():
   bpy.utils.unregister_module(__name__)  #mikshaw
   bpy.types.INFO_MT_file_export.remove(menu_func)
+  
+# create a temporary rigged from collected bones info
+# TODO add callback in order to interactively edit bone
 
+#SkeletonNoChanges=None
+#SkeletonTemp=None
+def createEditableRig(name, origin, boneTable):
+    # Create armature and object
+	bpy.ops.object.add(
+        type='ARMATURE', 
+        enter_editmode=True,
+        location=origin)
+	ob = bpy.context.object
+	ob.show_x_ray = True
+	ob.name = name
+	amt = ob.data
+	amt.name = name+'Amt'
+	amt.show_axes = True
+ 
+    # Create bones
+	bpy.ops.object.mode_set(mode='EDIT')
+	for (bname, pname, Cbone) in boneTable:  
+		bone = amt.edit_bones.new(bname)
+		if pname:
+			parent = amt.edit_bones[pname]
+			bone.parent = parent
+			bone.use_connect = True
+				
+		bone.head = ob.matrix_world*Cbone.blendbone.matrix_local*Cbone.blendbone.head.copy()
+		bone.tail = ob.matrix_world*Cbone.blendbone.matrix_local*Cbone.blendbone.tail.copy()
+			
+		
+		#bone.tail = rot * mathutils.Vector(vector) + bone.head
+	
+	bpy.ops.object.mode_set(mode='OBJECT')
+	
+	return ob
+ 
+def poseRig(ob, poseTable):
+	bpy.context.scene.objects.active = ob
+	bpy.ops.object.mode_set(mode='POSE')
+	for (bname, axis, angle) in poseTable:
+		pbone = ob.pose.bones[bname]
+        # Set rotation mode to Euler XYZ, easier to understand
+        # than default quaternions
+		pbone.rotation_mode = 'XYZ'
+        # Documentation bug: Euler.rotate(angle,axis):
+        # axis in ['x','y','z'] and not ['X','Y','Z']
+		pbone.rotation_euler.rotate_axis(axis, math.radians(angle))
+	bpy.ops.object.mode_set(mode='OBJECT')
+
+def watchBone(bone):
+    #checkchildren for changes
+	
+	try: 
+		ln=len(bone.name)-4
+		Cbon=BONES[bone.name[0:ln]]
+				
+	except:
+		
+		print('FOKED0 %s'%bone.name[0:ln])
+		return;
+	
+	if bone.parent :
+		ln=len(bone.parent.name)-4
+		if bone.parent.name[0:ln]!=Cbon.cal3d_parent.name:
+				Cbon.cal3d_parent=BONES[bone.parent.name[0:ln]]	
+				print('FOKED %s'%bone.name[0:ln])
+
+	
+				
+	for child in bone.children:
+		watchBone( child)
+
+	
+def watchBones(scene):
+	print("frame_change_pre:Check for bone parent cahnge in the temporary skeleton")
+	#print("if so get Cal3d Bone model and update it")
+	i=0
+	try:
+		SkeletonTemp=scene.objects['Bent'].data
+	except:
+		for a in bpy.app.handlers.scene_update_post :
+			print(a.__name__)
+			if a.__name__ == 'watchBones':
+					bpy.app.handlers.scene_update_post.remove(a)
+					continuexport()
+		return			
+		
+	for bone in SkeletonTemp.bones:
+	 #for bone in SkeletonTemp.edit_bones: 
+		watchBone(bone)
+			
+	#watch suppression TO DEBUG
+	ret=True; #true if all are finded
+	sup=""
+	while not ret:
+		
+		for bone in BONES.values():
+			
+			ret=False;# Hypo
+			for b in SkeletonTemp.bones:
+				if findinarmature( b,bone.name+"temp"): 
+					ret=True
+					break
+			
+			
+			if ret :
+				break
+			sup=bone.name
+			
+		
+		if not ret :
+			print(sup)
+			try:
+				
+				del BONES[sup]		
+			except:
+				print(sup)
+				break
+		else :
+			break
+				
+		
+def findinarmature(bone,name):
+	if bone.name==name:return True;
+	else:
+		for i in bone.children:
+			if findinarmature(i,name):return True;
+	return False;	
+	
+	
+	
+def buildtempSkeleton(origo,skeleton):
+	
+	origin = mathutils.Vector(origo)
+    # Table of bones in the form (bone, parent, vector)
+    # The vector is given in local coordinates
+	boneTable1=[]
+	for bone in skeleton.bones:
+		print(bone)
+		if len(bone.children)>=0:
+			#matrix=mathutils.Matrix.Translation(bone.translation_absolute-bone.cal3d_parent.translation_absolute)
+			v=bone.tail-bone.head;
+			#v=bone.children[0].quat.inverted().to_matrix()*(bone.loc)+bone.head;
+			child=None
+			if bone.cal3d_parent : child=bone.cal3d_parent.name +'temp'
+			boneTable1.append((bone.name+'temp',child,bone))
+		
+	
+	
+		#oups its not good
+		
+	
+	print(boneTable1)
+	SkeletonTemp = createEditableRig('Bent', origin, boneTable1)
+ 
+	#SkeletonNoChanges=SkeletonTemp.copy()
+	bpy.app.handlers.scene_update_post.append(watchBones)
+
+    # The second rig is a straight line, i.e. bones run along local Y axis
+	boneTable2 = [
+        ('Base', None, (1,0,0)),
+        ('Mid', 'Base', (0,0.5,0)),
+        ('Mid2', 'Mid', (0,0.5,0)),
+        ('Tip', 'Mid2', (0,1,0))
+    ]
+	#straight = createEditableRig('Straight', origin+mathutils.Vector((0,2,0)), boneTable2)
+ 
+    # Pose second rig
+	poseTable2 = [
+        ('Base', 'X', 90),
+        ('Mid2', 'Z', 45),
+        ('Tip', 'Y', -45)
+    ]
+	#poseRig(straight, poseTable2)
+ 
+    # Pose first rig
+	poseTable1 = [
+        ('Tip', 'Y', 45),
+        ('Mid', 'Y', 45),
+        ('Base', 'Y', 45)
+    ]
+	#poseRig(bent, poseTable1)
 if __name__ == "__main__":
   register()
