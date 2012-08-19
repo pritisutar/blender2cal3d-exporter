@@ -6,7 +6,7 @@ bl_info = { # changed from bl_addon_info in 2.57 -mikshaw
     "api": 31847,
     "location": "File > Export > Cal3d Skeletal Mesh/Animation Data (.cfg)",
     "description": "Export cal3d",
-    "warning": "TODEBUG: bad meshes matrix dispatch the model in space\nTODO Features: Material Texture Files export, Collect IPO to avoid animation baking ",
+    "warning": "TODO Features: Collect IPO to avoid animation baking ",
     "wiki_url": "http://wiki.blender.org/",
     "tracker_url": "http://google.com",
     "category": "Import-Export"}	# changed from "Import/Export" -katsbits
@@ -293,6 +293,7 @@ class Cal3DSubMesh(object):
 				except:
 					#print( "found an unknow vertex group: " + ob.vertex_groups[ ob.data.vertices[ blend_index ].groups[j].group ].name )
 					continue
+				bone.nbvertexinfluence+=1;	
 				influences.append( inf )
 			#check if parent is a bone
 			for j in range(1):
@@ -305,8 +306,10 @@ class Cal3DSubMesh(object):
 					#print(ob.parent_bone)
 					#print("create parent that is not part of blender\n")
 					inf = [ob.parent_bone,1.0]
-					if len(influences)==0 : influences.append( inf )
-
+					if len(influences)==0 : 
+						influences.append( inf )
+						bone.nbvertexinfluence+=1;	
+						
 			vertex = Cal3DVertex(blend_vert.co, normal, maps, influences)#blend_mesh.getVertexInfluences(blend_index))
 			self.vertices.append([vertex])
 			self.vert_mapping[blend_index] = len(self.vert_mapping)
@@ -577,17 +580,137 @@ class Cal3DSkeleton(object):
 		buff=('<?xml version="1.0"?>\n')
 		buff+=('<HEADER MAGIC="XSF" VERSION="%i"/>\n' % CAL3D_VERSION)
 		buff+=('<SKELETON NUMBONES="%i">\n' % len(self.bones))
+		i=0;
 		for item in self.bones:
 			buff+=item.writeCal3D(file)
 		buff+=('</SKELETON>\n')
 		file.write(bytes(buff, 'UTF-8'));
+		
+	def removeBoneFromSkelByName(self,name):
+		#for item in self.bones:
+		#	item.removeBoneByName(name)
+		tokill=self;
+		while not tokill is None:
+			tokill=None;
+			i=0
+			for item in self.bones:
+				if item.name ==name:
+					#kill item
+					print("founded in child")
+					tokill=i
+					
+					break
+				i+=1	
+			if not tokill is None :
+				print("killed %d"%len(self.bones))
+				#del BONES[ self.bones[tokill].name]
+				self.killwithAllChildren(tokill)
+				self.rebuildBonesIndices()
+				print("postkilled %d"%len(self.bones))
+				
+				
+	def rebuildBonesIndices(self):
+		i=0;
+		for bone in self.bones: 
+			bone.id=i
+			i+=1
 
+	def boneIndex(self,name):
+		i=0;
+		for bone in self.bones: 
+			if bone.name==name:
+				return i
+			i+=1
+		return -1;			
+				
+	def	killwithAllChildren(self,boneindex):
+		for item in self.bones[boneindex].children:
+			i=self.boneIndex(item.name)
+						
+			self.killwithAllChildren(i)
+		
+		#fix parent
+		if	self.bones[boneindex].cal3d_parent:
+			p=self.bones[boneindex].cal3d_parent
+			k=0
+			for c in p.children:
+				if c.name==self.bones[boneindex].name:
+					break
+				k+=1	
+			del p.children[k]
+			
+		
+		del BONES[ self.bones[boneindex].name]
+		del self.bones[boneindex]
+
+	#remove useless bones	
+	def optimize(self):
+		tokill=self;
+		while not tokill is None:
+			tokill=None;
+			i=0
+			for item in self.bones:
+				if item.nbvertexinfluence ==0:
+					#try to remove it
+					if len(item.children)!=0:
+						#print("try to find new parent for children of %s\n" %item.name);
+						for item2 in self.bones:
+							if item2.name!=item.name:
+								if item.tail==item2.tail:
+									if item2.nbvertexinfluence !=0:
+								#candidate for replacement found
+										print("replace %s in chain by %s\n"%(item.name,item2.name))	
+										for child in item.children:
+										
+											child.cal3d_parent=item2
+											item2.children.append(child)
+											child.quat=child.rotation_absolute *item2.rotation_absolute.inverted()
+										
+											mymat= item2.quat.to_matrix() #blend_bone.parent.matrix.copy();
+											mymat.invert();
+											parent_head=mymat*item2.head
+			
+											parent_tail=mymat*item2.tail
+											parent_tail=parent_tail+ child.head 
+    
+           
+											parentheadtotail = parent_tail-parent_head 
+          
+											child.loc=parentheadtotail;
+										tokill=i
+										break
+						if not tokill is None:break;	
+					else:
+						#izi
+						tokill=i
+						break
+			
+				i+=1	
+			if not tokill is None :
+				print("killed %s"% self.bones[tokill].name)
+				#del BONES[ self.bones[tokill].name]
+				
+				if self.bones[tokill].cal3d_parent:
+					ind=0
+					for child in self.bones[tokill].cal3d_parent.children:
+						if child.name==self.bones[tokill].name: break;
+						ind+=1;
+					del self.bones[tokill].cal3d_parent.children[ind];	
+						
+				del BONES[ self.bones[tokill].name]
+				del self.bones[tokill]
+				
+		
+				
+				self.rebuildBonesIndices()
+				print("postkilled %d"%len(self.bones))
 BONES = {}
 POSEBONES= {}
 class Cal3DBone(object):
-	__slots__ = 'blendbone','translation_absolute','rotation_absolute','head', 'tail', 'name', 'cal3d_parent', 'loc','child_loc', 'quat', 'children', 'matrix', 'lloc', 'lquat', 'id'
+	__slots__ ='nbvertexinfluence','blendbone','translation_absolute','rotation_absolute','head', 'tail', 'name', 'cal3d_parent', 'loc','child_loc', 'quat', 'children', 'matrix', 'lloc', 'lquat', 'id'
 	def __init__(self, skeleton, blend_bone, arm_matrix, cal3d_parent=None):
 		self.blendbone=blend_bone
+		self.nbvertexinfluence=0;
 		# head tail of the bone relative to parent
 		#head = arm_matrix*mathutils.Vector(blend_bone.head_local)
 		#tail = arm_matrix*mathutils.Vector(blend_bone.tail_local)
@@ -747,12 +870,60 @@ class Cal3DBone(object):
 				while father.parent: 
 					father=father.parent
 				print (father.name)	
-				if blend_child.name[0:9]!='Root_Fing': #Filter here
+				#if blend_child.name[0:9]!='Root_Fing': #Filter here
 					#if blend_child.name[0:18]!='Bone_Body_Root_Arm':
-					self.children.append(Cal3DBone(skeleton, blend_child, arm_matrix, self))
+				self.children.append(Cal3DBone(skeleton, blend_child, arm_matrix, self))
 				
 			
-		
+	def removeBoneByName(self,name):
+		print("removeBoneByName %s %s\n"%(self.name,name))
+		if False: #self.name==name :
+			print("found")
+			self.killAllChildren()
+			print("return to caller never happen!!!!!")	
+			#return True;
+		else :
+			tokill=self;
+			while not tokill is None:
+				tokill=None;
+				i=0
+				for item in self.children:
+					if item.name ==name:
+						#kill item
+						print("founded in child")
+						tokill=item
+						item.killAllChildren()
+						#break
+					i+=1	
+				if not tokill is None :
+					print("killed %d"%len(self.children))
+					self.children.remove(tokill)
+					del BONES[tokill.name]
+					print("postkilled %d"%len(self.children))
+			#return False;		
+					
+					
+	def killAllChildren(self):
+		print("killAllChildren %s \n"%(self.name))
+	
+		tokill=self;
+		while not tokill is None:
+			print("tokillloop")
+			tokill=None;
+			i=0
+			for item in self.children:
+				print("killAllChildren in self.children")
+				if len(item.children)==0:
+					tokill=item
+					#break
+				else :
+					item.killAllChildren()
+				i+=1
+			if not tokill is None:	
+				print("killed")
+				self.children.remove(tokill)
+				del BONES[tokill.name]
+				
 
 	def writeCal3D(self, file):
 		buff=('\t<BONE ID="%i" NAME="%s" NUMCHILD="%i">\n' % \
@@ -990,6 +1161,7 @@ file_only_noext=''
 base_only =''
 skeleton=None
 globfilename=''
+meshes=[]
 def new_name(dataname, ext):
 		#return file_only_noext + '_' + BPySys.cleanName(dataname) + ext
 		global file_only_noext
@@ -1001,6 +1173,7 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 	global base_only
 	global globfilename
 	global selected
+	global	meshes
 	bpy.context.scene.frame_set(bpy.context.scene.frame_start);
 	bpy.ops.object.mode_set(mode='OBJECT')
 	sce =bpy.context.scene;
@@ -1021,7 +1194,7 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 	blend_world = sce.world
 	# ---- Export skeleton (armature) ----------------------------------------
 	
-	global skeleton 
+	
 	skeleton= Cal3DSkeleton()
 
 	selected=bpy.context.selected_objects
@@ -1048,7 +1221,22 @@ def export_cal3d(filename, PREF_SCALE=0.1, PREF_BAKE_MOTION = True, PREF_ACT_ACT
 			#if blender_armature:Cal3DBone(skeleton, best_armature_root(blender_armature.data), blender_armature.matrix_world)
 			Cal3DBone(skeleton, masterbone, blender_armature.matrix_world)
 
+	# ---- Export Mesh data ---------------------------------------------------
+	 
 	
+	#first pass: crawl bone influences
+	for ob in  selected: #bpy.context.selected_objects:
+		print( "Processing mesh: "+ ob.name+ ob.type )
+		if ob.type != 'MESH':continue
+		#print("mesh found in selection")
+		#blend_mesh = ob.getData(mesh=1)
+		data=ob.to_mesh(bpy.context.scene,False,'PREVIEW')
+		if not data.faces:			continue
+		
+		meshes.append( Cal3DMesh(ob,data , bpy.context.scene.world) )
+	
+	#remove  useless bones
+	skeleton.optimize();
 	buildtempSkeleton((-1,0,0),skeleton) 
 	return
 	
@@ -1059,18 +1247,18 @@ def continuexport():
 	global globfilename
 	global blender_armature
 	global selected
-	# ---- Export Mesh data ---------------------------------------------------
-	meshes = []
-	for ob in  selected: #bpy.context.selected_objects:
-		print( "Processing mesh: "+ ob.name+ ob.type )
-		if ob.type != 'MESH':continue
-		#print("mesh found in selection")
-		#blend_mesh = ob.getData(mesh=1)
-		
-		if not ob.data.faces:			continue
-		
-		meshes.append( Cal3DMesh(ob, ob.to_mesh(bpy.context.scene,False,'PREVIEW'), bpy.context.scene.world) )
 	
+	
+	#second pass: rebuild mesh ignore  influences
+	#for ob in  selected: #bpy.context.selected_objects:
+		#print( "Processing mesh: "+ ob.name+ ob.type )
+		#if ob.type != 'MESH':continue
+		
+		#data=ob.to_mesh(bpy.context.scene,False,'PREVIEW')
+		#if not data.faces:			continue
+		
+		#meshes.append( Cal3DMesh(ob,data , bpy.context.scene.world) )
+		
 	# ---- Export animations --------------------------------------------------
 	#backup_action = blender_armature.action
 	if blender_armature:
@@ -1294,7 +1482,7 @@ def continuexport():
 	buff=('# Cal3D model exported from Blender with export_cal3d.py\n# from \n')
 	
 	#if PREF_SCALE != 1.0:	buff+='scale=%.6f\n' % PREF_SCALE
-	buff+='scale=%.6f\n' % 0.1
+	buff+='scale=%.6f\n' % 0.01 
 	
 	fname =  file_only_noext + '.xsf'
 	file = open( base_only +  fname, 'wb')
@@ -1502,35 +1690,46 @@ def poseRig(ob, poseTable):
 
 def watchBone(bone):
     #checkchildren for changes
-	
+	error=''
+	ln=len(bone.name)-4
+	bone_name=bone.name[0:ln]
 	try: 
-		ln=len(bone.name)-4
-		Cbon=BONES[bone.name[0:ln]]
-				
-	except:
 		
-		print('FOKED0 %s'%bone.name[0:ln])
-		return;
-	
-	if bone.parent :
-		ln=len(bone.parent.name)-4
-		if bone.parent.name[0:ln]!=Cbon.cal3d_parent.name:
-				Cbon.cal3d_parent=BONES[bone.parent.name[0:ln]]	
-				print('FOKED %s'%bone.name[0:ln])
-
-	
+		Cbon=BONES[bone_name]
 				
-	for child in bone.children:
-		watchBone( child)
-
+	
+	
+		if bone.parent :
+			ln=len(bone.parent.name)-4
+			if bone.parent.name[0:ln]!=Cbon.cal3d_parent.name:
+					temp=Cbon.cal3d_parent.name
+					Cbon.cal3d_parent=BONES[bone.parent.name[0:ln]]	
+					print("parent of  %s is changed from %s to %s \n" %(bone.name , temp ,Cbon.cal3d_parent.name))
+	except:
+		print('bone not found %s %s'%(bone.name[0:ln] ,bone.name))
+		error='fok'
+		#return;
+	
+	if error=='':
+		for child in bone.children:
+			if not watchBone( child):
+				continue #TODO ERROR == REMOVE ALL CHILD
+		return True;	
+	else:return True
 	
 def watchBones(scene):
-	print("frame_change_pre:Check for bone parent cahnge in the temporary skeleton")
+	global skeleton
+	#print("frame_change_pre:Check for bone parent cahnge in the temporary skeleton")
 	#print("if so get Cal3d Bone model and update it")
 	i=0
+	SkeletonTemp=None
 	try:
-		SkeletonTemp=scene.objects['Bent'].data
+		#SkeletonTemp=scene.objects['Bent'].data
+		SkeletonTemp=bpy.context.selected_objects[0].data
 	except:
+		i=0 
+		return
+	if bpy.context.selected_objects[0].name!='Bent':
 		for a in bpy.app.handlers.scene_update_post :
 			print(a.__name__)
 			if a.__name__ == 'watchBones':
@@ -1538,46 +1737,66 @@ def watchBones(scene):
 					continuexport()
 		return			
 		
-	for bone in SkeletonTemp.bones:
-	 #for bone in SkeletonTemp.edit_bones: 
+		
+	#override defective method in bender < 2.62
+	try:
+		for obj in bpy.context.selected_editable_bones:
+			for c in obj.children:
+				c.select=True
+	except:
+		i=0 #not critical eroor (none selected)
+			
+	#for bone in SkeletonTemp.bones:
+	for bone in SkeletonTemp.edit_bones: 
 		watchBone(bone)
 			
 	#watch suppression TO DEBUG
-	ret=True; #true if all are finded
-	sup=""
+	ret=False; #true if all are finded
+	supp=''
 	while not ret:
 		
 		for bone in BONES.values():
 			
-			ret=False;# Hypo
-			for b in SkeletonTemp.bones:
-				if findinarmature( b,bone.name+"temp"): 
-					ret=True
-					break
+			ret=findinarmature(SkeletonTemp,bone.name+"temp");
 			
 			
 			if ret :
+				continue
+			else:
+				supp=bone.name
 				break
-			sup=bone.name
-			
 		
 		if not ret :
-			print(sup)
-			try:
+			
+			skeleton.removeBoneFromSkelByName(supp)
+			try:				
+				print("removal of bone%s\n"%supp)
 				
-				del BONES[sup]		
 			except:
-				print(sup)
+				print("Error with removeBoneByName %s\n"%supp)
+				print(skeleton)
+			
+			try:				
+				del BONES[supp]
+				
+			except:
+				print("Error with removal of bone%s\n"%supp)
 				break
 		else :
 			break
-				
-		
-def findinarmature(bone,name):
+			
+			
+def	findinarmature(arm,name)	:		
+		for b in arm.bones:
+				if findinbone(b,name): 
+					return True;
+		return False			
+					
+def findinbone(bone,name):
 	if bone.name==name:return True;
 	else:
 		for i in bone.children:
-			if findinarmature(i,name):return True;
+			if findinbone(i,name):return True;
 	return False;	
 	
 	
@@ -1600,24 +1819,15 @@ def buildtempSkeleton(origo,skeleton):
 		
 	
 	
-		#oups its not good
 		
 	
-	print(boneTable1)
+	print(len(boneTable1))
 	SkeletonTemp = createEditableRig('Bent', origin, boneTable1)
  
 	#SkeletonNoChanges=SkeletonTemp.copy()
 	bpy.app.handlers.scene_update_post.append(watchBones)
 
-    # The second rig is a straight line, i.e. bones run along local Y axis
-	boneTable2 = [
-        ('Base', None, (1,0,0)),
-        ('Mid', 'Base', (0,0.5,0)),
-        ('Mid2', 'Mid', (0,0.5,0)),
-        ('Tip', 'Mid2', (0,1,0))
-    ]
-	#straight = createEditableRig('Straight', origin+mathutils.Vector((0,2,0)), boneTable2)
- 
+    
     # Pose second rig
 	poseTable2 = [
         ('Base', 'X', 90),
