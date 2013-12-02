@@ -2,14 +2,13 @@
 
 This project aim to provide Blender 2.6x an exporter in order to export animated model into Cal3d format
 
-Nothing really work well yet but at least it doesn't crash in Blender 2.62
+Not really work well for Miku model's fingers but it's automatic...
 
 
 == TODO ==
 
-  * Debug all transforms (bones,animation,mesh)
+  * Update meshes's weights of removed bones to the nearest bones...(I think it can do the tricks)
   * Use IPO instead of the current heavy baked animation
-  * Remove uses of mathutils.Mesh.faces (deprecated in 2.6.8)
   * A lot of cleaning 
 
 == How to use ==
@@ -18,6 +17,8 @@ Nothing really work well yet but at least it doesn't crash in Blender 2.62
   # Install Add ons
   # Search the mycalexporter.py file and install
   # File->export->Cal3D(.cfg)
+  # A temporary skeleton is generated so go in edit mode and remove FK, IK and other animator bones
+  #return to Object Mode and left click on the original model to continue the export.
 
 == Where to find Cal3d library ==
 Cal3d is mandatory if you want to test results. It can be found here:
