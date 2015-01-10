@@ -13,10 +13,11 @@ class Cal3DMaterial(object):
 		
 		if blend_material:
 			self.amb  = tuple([int(c*blend_material.ambient) for c in amb] + [255])
-			self.diff = tuple([int(c*255) for c in blend_material.diffuse_color] + [int(blend_material.alpha*255)])
-			self.spec = tuple([int(c*255) for c in blend_material.specular_color] + [int(blend_material.alpha*255)])
+			self.diff = tuple([int(c*255) for c in blend_material.diffuse_color*blend_material.diffuse_intensity ] + [int(blend_material.alpha*255)])
+			self.spec = tuple([int(c*255) for c in blend_material.specular_color*blend_material.specular_intensity ] + [int(blend_material.alpha*255)])
 			self.shininess = (float(blend_material.specular_hardness)-1)/0.510 #from 1:511 to 0:1000...quite arbitrary
 		else:
+			print("NO MATERIAL USE DEFAULT ONE")
 			self.amb  = tuple(amb + [255])
 			self.diff = (255,255,255,255)
 			self.spec = (255,255,255,255)
