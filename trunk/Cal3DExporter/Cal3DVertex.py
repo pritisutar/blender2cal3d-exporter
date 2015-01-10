@@ -72,7 +72,7 @@ class Cal3DVertex(object):
 						print(floatinfluences)
 						continue
 					
-					if weight:
+					if weight and sum:
 						if weight/sum > self.WEIGHT_TRESHOLD:
 							self.influences.append(Cal3DInfluence(bone, weight / sum))
 							#bone.totalinfluence=1.0
