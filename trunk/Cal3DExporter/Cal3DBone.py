@@ -1,4 +1,4 @@
-CAL3D_VERSION = 910
+ 
 
 class Cal3DBone(object):
 	#BONES= {}

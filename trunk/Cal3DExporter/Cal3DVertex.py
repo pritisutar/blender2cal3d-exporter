@@ -1,4 +1,4 @@
-CAL3D_VERSION = 910
+
 
 import bpy,struct,math,os,time,sys,mathutils
 class Cal3DVertex(object):

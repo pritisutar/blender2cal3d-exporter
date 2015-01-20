@@ -1,4 +1,4 @@
-CAL3D_VERSION = 910
+CAL3D_VERSION = 1100
 
 #shapekeycpt=0
 #blend_mesh.active_shape_key_index=shapekeycpt
@@ -253,8 +253,10 @@ class Cal3DBlendShapeMesh(object):
 	def writeCal3D(self, file):
 
 		buff=('<?xml version="1.0"?>\n')
-		buff+=('<HEADER MAGIC="XMF" VERSION="%i"/>\n' % CAL3D_VERSION)
-		buff+=('<MESH NUMSUBMESH="%i" NUMBLENDSHAPE="%i">\n' %( len(self.submeshes) ,self.numBlendShape))
+		#buff+=('<HEADER MAGIC="XMF" VERSION="%i"/>\n' % CAL3D_VERSION)
+		#buff+=('<MESH NUMSUBMESH="%i" NUMBLENDSHAPE="%i">\n' %( len(self.submeshes) ,self.numBlendShape))
+		buff+=('<MESH MAGIC="XMF" VERSION="%i" ' % CAL3D_VERSION)
+		buff+=('NUMSUBMESH="%i" NUMBLENDSHAPE="%i">\n' %( len(self.submeshes) ,self.numBlendShape))
 		#buff+=('<MESH NUMSUBMESH="%i">\n' % len(self.submeshes))
 		#BlendShapes Naming
 		for i,shapename in enumerate(self.blendshapes_names):

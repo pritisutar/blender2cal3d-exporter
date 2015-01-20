@@ -1,4 +1,3 @@
-CAL3D_VERSION = 910
 class Cal3DBlendShapeVertex(object):
 	__slots__ = 'locs','normals','collapse_to','face_collapse_count','maps','influences','weight','cloned_from','clones','id'
 	def __init__(self, locs, normals, maps, blend_influences):

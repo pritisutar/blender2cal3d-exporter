@@ -1,4 +1,3 @@
-CAL3D_VERSION = 910
 
 class Cal3DSubMesh(object):
 	__slots__ = 'material', 'vertices', 'vert_mapping', 'vert_count', 'faces', 'nb_lodsteps', 'springs','numtexcoord', 'id'

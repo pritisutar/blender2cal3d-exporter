@@ -1,4 +1,4 @@
-CAL3D_VERSION = 910
+CAL3D_VERSION = 1100
 import bpy,struct,math,os,time,sys,mathutils
 #problem with multiple texture material
 class Cal3DMaterial(object):
@@ -41,8 +41,10 @@ class Cal3DMaterial(object):
 	# new xml format
 	def writeCal3D(self, file):
 		buff='<?xml version="1.0"?>\n'
-		buff+=('<HEADER MAGIC="XRF" VERSION="%i"/>\n' % CAL3D_VERSION)
-		buff+=('<MATERIAL NUMMAPS="%s">\n' % len(self.maps_filenames))
+		#buff+=('<HEADER MAGIC="XRF" VERSION="%i"/>\n' % CAL3D_VERSION)
+		#buff+=('<MATERIAL NUMMAPS="%s">\n' % len(self.maps_filenames))
+		buff+=('<MATERIAL MAGIC="XRF" VERSION="%i" ' % CAL3D_VERSION)
+		buff+=('NUMMAPS="%s">\n' % len(self.maps_filenames))
 		buff+=('\t<AMBIENT>%i %i %i %i</AMBIENT>\n' % self.amb)
 		buff+=('\t<DIFFUSE>%i %i %i %i</DIFFUSE>\n' % self.diff)
 		buff+=('\t<SPECULAR>%i %i %i %i</SPECULAR>\n' % self.spec)
@@ -61,7 +63,7 @@ class Cal3DMaterial(object):
 		ar = array('b', list(s))
 		ar.tofile(file)
 
-		ar = array('L', [1200])
+		ar = array('L', [1100])
 		ar.tofile(file)
 
 		ar = array('B', [self.ambient.r,
