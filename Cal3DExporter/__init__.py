@@ -15,7 +15,7 @@ bl_info = { # changed from bl_addon_info in 2.57 -mikshaw
 # surely not optimal :-(
 LODS = 0 #not tested
 
-CAL3D_VERSION = 910
+CAL3D_VERSION = 1100
 CHILD_ARMATURE_TRY=True
 
 MESH_EXPORT_MODE='PREVIEW' #'RENDER')
@@ -129,9 +129,12 @@ class Cal3DMorphAnimation:
 	
 	def writeCal3D(self, file):
 		buff=('<?xml version="1.0"?>\n')
-		buff+=('<HEADER MAGIC="XPF" VERSION="%i"/>\n' % CAL3D_VERSION)
-		buff+=('<ANIMATION DURATION="%.6f" NUMTRACKS="%i">\n' % \
+		buff+=('<ANIMATION MAGIC="XPF" VERSION="%i" ' % CAL3D_VERSION)
+		buff+=('DURATION="%.6f" NUMTRACKS="%i">\n' % \
 				 (self.duration, len(self.tracks)))
+		#buff+=('<HEADER MAGIC="XPF" VERSION="%i"/>\n' % CAL3D_VERSION)
+		#buff+=('<ANIMATION DURATION="%.6f" NUMTRACKS="%i">\n' % \
+		#		 (self.duration, len(self.tracks)))
 		
 		for item in self.tracks:
 			buff+=item.writeCal3D(file)
@@ -142,7 +145,7 @@ class Cal3DMorphAnimation:
 		ar = array('b', list(s))
 		ar.tofile(file)
 
-		ar = array('L', [1200]) # this is the file version I was working from
+		ar = array('L', [1100]) # this is the file version I was working from
 		ar.tofile(file)
 		# ar = array('L', [1300]) # one file version up from the documentation (with compression)
 		# ar.tofile(file)
@@ -182,9 +185,12 @@ class Cal3DAnimation:
 	
 	def writeCal3D(self, file):
 		buff=('<?xml version="1.0"?>\n')
-		buff+=('<HEADER MAGIC="XAF" VERSION="%i"/>\n' % CAL3D_VERSION)
-		buff+=('<ANIMATION DURATION="%.6f" NUMTRACKS="%i">\n' % \
+		buff+=('<ANIMATION MAGIC="XAF" VERSION="%i" ' % CAL3D_VERSION)
+		buff+=('DURATION="%.6f" NUMTRACKS="%i">\n' % \
 				 (self.duration, len(self.tracks)))
+		#buff+=('<HEADER MAGIC="XAF" VERSION="%i"/>\n' % CAL3D_VERSION)
+		#buff+=('<ANIMATION DURATION="%.6f" NUMTRACKS="%i">\n' % \
+		#		 (self.duration, len(self.tracks)))
 		
 		for item in self.tracks.values():
 			buff+=item.writeCal3D(file)
@@ -195,7 +201,7 @@ class Cal3DAnimation:
 			ar = array('b', list(s))
 			ar.tofile(file)
 
-			ar = array('L', [1200]) # this is the file version I was working from
+			ar = array('L', [1100]) # this is the file version I was working from
 			ar.tofile(file)
 			# ar = array('L', [1300]) # one file version up from the documentation (with compression)
 			# ar.tofile(file)

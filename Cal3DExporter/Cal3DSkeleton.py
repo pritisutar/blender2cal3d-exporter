@@ -1,4 +1,4 @@
-CAL3D_VERSION = 910
+CAL3D_VERSION = 1100	
 
 class Cal3DSkeleton(object):
 	BONES= {}
@@ -12,8 +12,10 @@ class Cal3DSkeleton(object):
 		self.rebuildBonesIndices();
 			
 		buff=('<?xml version="1.0"?>\n')
-		buff+=('<HEADER MAGIC="XSF" VERSION="%i"/>\n' % CAL3D_VERSION)
-		buff+=('<SKELETON NUMBONES="%i">\n' % len(self.bones))
+		#910buff+=('<HEADER MAGIC="XSF" VERSION="%i"/>\n' % CAL3D_VERSION)
+		#buff+=('<SKELETON NUMBONES="%i">\n' % len(self.bones))
+		buff+=('<SKELETON MAGIC="XSF" VERSION="%i" ' % CAL3D_VERSION)
+		buff+=('NUMBONES="%i">\n' % len(self.bones))
 		i=0;
 		for item in self.bones:
 			buff+=item.writeCal3D(file)
@@ -27,7 +29,7 @@ class Cal3DSkeleton(object):
 				ar = array('b', list(s))
 				ar.tofile(file)
 
-				ar = array('L', [1200,
+				ar = array('L', [1100,
 												 len(self.bones)])
 				ar.tofile(file)
 

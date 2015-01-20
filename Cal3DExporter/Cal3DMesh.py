@@ -1,4 +1,4 @@
-CAL3D_VERSION = 910
+CAL3D_VERSION = 1100
 from array import array
 
 
@@ -187,8 +187,10 @@ class Cal3DMesh(object):
 	def writeCal3D(self, file):
 
 		buff=('<?xml version="1.0"?>\n')
-		buff+=('<HEADER MAGIC="XMF" VERSION="%i"/>\n' % CAL3D_VERSION)
-		buff+=('<MESH NUMSUBMESH="%i">\n' % len(self.submeshes))
+		#buff+=('<HEADER MAGIC="XMF" VERSION="%i"/>\n' % CAL3D_VERSION)
+		#buff+=('<MESH NUMSUBMESH="%i">\n' % len(self.submeshes))
+		buff+=('<MESH MAGIC="XMF" VERSION="%i" ' % CAL3D_VERSION)
+		buff+=('NUMSUBMESH="%i">\n' % len(self.submeshes))
 		for submesh in self.submeshes:
 			buff+=submesh.writeCal3D(file, self.matrix, self.matrix_normal)
 		buff+=('</MESH>\n')
@@ -200,7 +202,7 @@ class Cal3DMesh(object):
 		ar = array('b', list(s))
 		ar.tofile(file)
 
-		ar = array('L', [1200])
+		ar = array('L', [1100])
 		ar.tofile(file)
 
 		ar = array('L', [len(self.submeshes)])
