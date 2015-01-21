@@ -15,4 +15,4 @@ Not really work well for Miku model's fingers but it's automatic...
 
 == Where to find Cal3d library ==
 Cal3d is mandatory if you want to test results. It can be found here:
-[http://gna.org/projects/cal3d/ Cal3D HomePage]
+[http://gna.org/projects/cal3d/ Cal3D HomePage] (use the svn version for correct blendshape support)
